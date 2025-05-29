@@ -1,0 +1,86 @@
+image: docker:latest
+
+services:
+  - docker:dind
+
+variables:
+  DOCKER_DRIVER: overlay2
+  MAVEN_CLI_OPTS: "--batch-mode"
+  DOCKER_TLS_CERTDIR: ""
+
+stages:
+  - build
+  - test
+  - package
+  - dockerize
+  - pages
+
+before_script:
+  - echo "Running CI/CD pipeline for Spring Boot Gym HTML App"
+
+# --------------------------
+# BUILD STAGE
+# --------------------------
+build:
+  stage: build
+  image: maven:3.9.4-eclipse-temurin-17
+  script:
+    - mvn $MAVEN_CLI_OPTS clean compile
+  only:
+    - main
+
+# --------------------------
+# TEST STAGE
+# --------------------------
+test:
+  stage: test
+  image: maven:3.9.4-eclipse-temurin-17
+  script:
+    - mvn $MAVEN_CLI_OPTS test
+  only:
+    - main
+
+# --------------------------
+# PACKAGE STAGE
+# --------------------------
+package:
+  stage: package
+  image: maven:3.9.4-eclipse-temurin-17
+  script:
+    - mvn $MAVEN_CLI_OPTS package
+  artifacts:
+    paths:
+      - target/*.jar
+  only:
+    - main
+
+# --------------------------
+# DOCKERIZE AND PUSH
+# --------------------------
+dockerize:
+  stage: dockerize
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build --build-arg BASE_IMAGE=openjdk:17-jdk-slim -t "$CI_REGISTRY_IMAGE:latest" .
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+  only:
+    - main
+
+# --------------------------
+# GITLAB PAGES FOR STATIC HTML
+# --------------------------
+pages:
+  stage: pages
+  script:
+    - mkdir .public
+    - cp -r src/main/resources/static/* .public/
+    - mv .public public
+  artifacts:
+    paths:
+      - public
+  only:
+    - main
